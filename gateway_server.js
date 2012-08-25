@@ -8,26 +8,35 @@ var channels = require('./components/channels');
 // Based on their username
 
 // The list of pending messages to give to the user
-// TODO : Make this a real class
-var msg_queue = []
+var msg_queue = {}
+msg_queue.users = {}
+msg_queue.add_message = function(user_id, message )
+{
+  if ( !(user_id in this.users)) { this.users[user_id]=[]; }
+  if ( ! this.users.hasOwnProperty(user_id) ) { throw new Error("Invalid user_id"); }
+  this.users[user_id].push(message);
+}
+msg_queue.get_messages = function( user_id )
+{
+  if( !( user_id in this.users)) { return []; }
+  if ( ! this.users.hasOwnProperty(user_id) ) { throw new Error("Invalid user_id"); }
+  var retval = this.users[user_id];
+  this.users[user_id] = [];
+  return retval;
+}
 
-// For now take all messages - we'll filter them ourself.
 channels.subscribe('AUTH', function(channel,data)
 {
   var value = JSON.parse( data.toString() );
-  console.log("Got me a "+data.toString() );
   // TODO: Check its a message that should go to a player.
-  // TODO: Store it in the msg queue
-  msg_queue.push( value );
+  msg_queue.add_message( value.id, value );
 } )
 
 
 function onRequest( request, response ) {
-  console.log( request.headers );
 
   var data_chunks = [];
 
-  console.log( "Request for ", request.url );
   request.addListener("data", function(chunk) {
     data_chunks.push( chunk )
   } );
@@ -106,12 +115,12 @@ function onRequest( request, response ) {
       }
 
       response.writeHead(200, {"Content-Type":"application/json"});
-      var result = { "id":"_some_opaque_user_id_", "auth_token":"_some_opaque_auth_token" }
-      result.messages = msg_queue
-      msg_queue = []
+      var user_id = "_some_opaque_user_id_";
+      var result = { "id":user_id, "auth_token":"_some_opaque_auth_token" }
+      result.messages = msg_queue.get_messages( user_id );
       response.write( JSON.stringify( result  ) );
 
-      channels.send( "AUTH", JSON.stringify({ "auth":"_some_opaque_user_id_" } ) )
+      channels.send( "AUTH", JSON.stringify({ "id":user_id, "mesg":"I is teh roxxor" } ) )
     }
     else if( request.url == "/poll" )
     {
@@ -119,8 +128,7 @@ function onRequest( request, response ) {
       console.log("Got poll request ... just faking it");
       response.writeHead(200, {"Content-Type":"application/json"});
       // TODO: Get real messages
-      response.write( JSON.stringify( { "messages":msg_queue } ) );
-      msg_queue = []
+      response.write( JSON.stringify( { "messages":msg_queue.get_messages( "_some_opaque_user_id_" ) } ) );
     }
     else
     {
